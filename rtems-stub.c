@@ -4,8 +4,11 @@
 #include <rtems.h>
 #include <rtems/error.h>
 #include <rtems/bspIo.h>
+#include <rtems/score/objectdata.h>
+#include <rtems/score/objectimpl.h>
+#include <rtems/score/statesimpl.h>
 
-#include <sys/termios.h>
+#include <termios.h>
 #include <sys/fcntl.h>
 #include <sys/ioctl.h>
 
@@ -610,7 +613,7 @@ again:
 		for ( max=0, api=0; api<=OBJECTS_APIS_LAST; api++ ) {
 			Objects_Information **apiinfo = _Objects_Information_table[api];
 			if ( apiinfo && (info = apiinfo[1/* thread class for all APIs*/] ) )
-				max += info->maximum;
+				max += _Objects_Get_index(info->maximum_id);
 		}
 		t = realloc(t, sizeof(rtems_id)*(max+1));
 
@@ -623,7 +626,7 @@ again:
                     || !(info = apiinfo[1/* thread class for all APIs*/] )
 					|| !info->local_table )
 					continue;
-				for ( i=1; i<=info->maximum; i++ ) {
+				for ( i=1; i<=_Objects_Get_index(info->maximum_id); i++ ) {
 					if (!(c=info->local_table[i]))
 						continue;
 					t[cur++] = c->id;
@@ -683,7 +686,7 @@ static int compileThreadExtraInfo(char *extrabuf, rtems_id tid)
 Thread_Control    *thr;
 Objects_Locations l;
 States_Control    state = 0xffff;
-int               pri   = 0, i = 0;
+uint64_t          pri   = 0, i = 0;
 
 	memset(extrabuf,0,EXTRABUFSZ);
 	if ( (thr=_Thread_Get( tid, &l )) ) {
@@ -726,7 +729,7 @@ int               pri   = 0, i = 0;
 			}
 #endif
 			state = thr->current_state;
-			pri   = thr->real_priority;
+			pri   = thr->Real_priority.priority;
 		}
 		_Thread_Enable_dispatch();
 		if ( OBJECTS_LOCAL != l )
@@ -1610,7 +1613,6 @@ void blah()
 int
 rtems_gdb_start(int pri, char *ttyName)
 {
-unsigned ticks_per_sec;
 rtems_status_code sc;
 
 	if ( rtems_gdb_tid ) {
@@ -1626,8 +1628,7 @@ rtems_status_code sc;
 	init_stack();
 #endif
 
-    rtems_clock_get( RTEMS_CLOCK_GET_TICKS_PER_SECOND, &ticks_per_sec );
-	wait_ticks  = ticks_per_sec * poll_ms;
+	wait_ticks  = rtems_clock_get_ticks_per_second() * poll_ms;
 	wait_ticks /= 1000;
 
 #if 0	/* cloning stdio doesn't work properly */
